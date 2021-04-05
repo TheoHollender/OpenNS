@@ -8,6 +8,8 @@ import java.util.Queue;
 
 import com.google.crypto.tink.KeysetHandle;
 
+import BaseSubsystems.NL_BaseSubsystem.NetUtils.NetMessage;
+
 public class BS_Socket {
 	
 	public Socket defaultSock;

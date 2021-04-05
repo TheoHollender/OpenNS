@@ -1,0 +1,12 @@
+/target/
+/.settings/
+/Requires/
+/NLBuilds/
+OpenNLAlpha1.jar
+OpenNLAlpha2.jar
+.project
+.classpath
+build.nl
+keyset-public.json
+keyset-master.json
+keyset-public-extern.json

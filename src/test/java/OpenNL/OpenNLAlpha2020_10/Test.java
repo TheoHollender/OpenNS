@@ -3,6 +3,7 @@ package OpenNL.OpenNLAlpha2020_10;
 import java.util.Scanner;
 
 import BaseSubsystems.NL_BaseSubsystem.NL_BaseSubsystem;
+import BaseSubsystems.NL_BaseSubsystem.NetUtils.NetMessage;
 import OpenNL.Core.OpenNL;
 
 public class Test {
@@ -18,9 +19,15 @@ public class Test {
 			String msg = sc.nextLine();
 			String[] msgSpl = msg.split("_");
 			if(msgSpl.length>1 && msgSpl[0].equals("send")){
-				system.send(system.PROTOCOL_DEFAULT, sock, msgSpl[1]);
-				system.send(system.PROTOCOL_ENCRYPTED, sock, msgSpl[1]);
-				system.send(system.PROTOCOL_FALLBACK, sock, msgSpl[1]);
+				NetMessage m = new NetMessage();
+				m.message = msgSpl[1];
+				for(int i=2; i<msgSpl.length; i++){
+					String[] h = msgSpl[i].split("%");
+					m.head.strings.put(h[0], h[1]);
+				}
+				system.send(system.PROTOCOL_DEFAULT, sock, m);
+				system.send(system.PROTOCOL_ENCRYPTED, sock, m);
+				system.send(system.PROTOCOL_FALLBACK, sock, m);
 				System.out.println("sent");
 			}else if(msgSpl.length>0 && msgSpl[0].equals("recv")){
 				if(system.hasFallBackMessage(sock)){

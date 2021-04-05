@@ -52,7 +52,7 @@ public class KeySetSystem {
 	
 	public static String decrypt(KeysetHandle pub, String cipher64) throws GeneralSecurityException, IOException{
 		
-		System.out.println(cipher64);
+		//System.out.println(cipher64);
 		
 		//KeysetHandle pub = CleartextKeysetHandle.read(
 		//		JsonKeysetReader.withFile(new File(pubkeyfile)));

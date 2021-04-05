@@ -3,6 +3,7 @@ package BaseSubsystems.NL_BaseSubsystem;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
@@ -18,6 +19,8 @@ import com.google.crypto.tink.JsonKeysetWriter;
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.config.TinkConfig;
 
+import BaseSubsystems.NL_BaseSubsystem.NetUtils.NetMessage;
+import OpenNL.BaseNetMessage;
 import OpenNL.Core.NLSubsystem;
 import OpenNL.NL_Language.NLReader;
 import OpenNL.Protocols.EncryptionProtocol;
@@ -127,14 +130,14 @@ public class NL_BaseSubsystem extends NLSubsystem {
 						sockets.get(index).pri = pv;
 						sendPrivate(m, String.valueOf(index));
 						
-						System.out.println("Connection Opened");
+						//System.out.println("Connection Opened");
 					}else{
 						String[] s = response.split("_");
 						if(s.length>1){
 							int index = Integer.parseInt(s[1]);
 							if(sockets.get(index).encryptedTunnel==null){
 								sockets.get(index).encryptedTunnel=m;
-								System.out.println("2/3");
+								//System.out.println("2/3");
 							}else if(sockets.get(index).fallbackTunnel==null){
 								sockets.get(index).fallbackTunnel=m;
 								sockets.get(index).sFall = m.getInputStream();
@@ -143,7 +146,7 @@ public class NL_BaseSubsystem extends NLSubsystem {
 								sendPrivate(m, "CRYPTDATA%%%%%%"+new NLReader(new FileReader(KeySetSystem.keysetpub)).readAll());
 								
 								newSocketsWaiting.add(index);
-								System.out.println("Connection Finished");
+								//System.out.println("Connection Finished");
 							}else{
 								m.close();
 							}
@@ -173,11 +176,25 @@ public class NL_BaseSubsystem extends NLSubsystem {
 		thSSock = new Thread(new ThreadAccept());
 		thSSock.start();
 		
-		System.out.println("Created server");
+		//System.out.println("Created server");
 		
 		return 0;
 	}
 
+	public static String recvForServer(Socket sc) throws Exception{
+		InputStream oStr = sc.getInputStream();
+		if(oStr.available()==0){
+			return "";
+		}
+		int timeout = 0;
+		while(oStr.available()==0){timeout+=1; if(timeout==5000){return "";}}
+		
+		byte[] bytes = new byte[oStr.available()];
+		oStr.read(bytes);
+		
+		return new String(bytes);
+	}
+	
 	public static String waitForServer(Socket sc) throws Exception{
 		InputStream oStr = sc.getInputStream();
 		
@@ -217,15 +234,19 @@ public class NL_BaseSubsystem extends NLSubsystem {
 		return null;
 	}
 	
+	
 	@Override
-	public boolean send(int protocol, int index, String s){
+	public boolean send(int protocol, int index, NetMessage msg){
 		try{
 			Socket sc = getSock(protocol, sockets.get(index));
-			Protocol p = getProt(protocol, sockets.get(index));
-			if(p!=null){
-				s=p.toSocket(s);
+			if(protocol==PROTOCOL_FALLBACK){
+				sendPrivate(sc, msg.message);
+			}else{
+				Protocol p = getProt(protocol, sockets.get(index));
+				String s = msg.toString(p);
+				s = String.valueOf(s.length())+";"+s;
+				sendPrivate(sc, s);
 			}
-			sendPrivate(sc, s);
 			return true;
 		}catch(Exception e){
 			e.printStackTrace();
@@ -233,19 +254,47 @@ public class NL_BaseSubsystem extends NLSubsystem {
 		}
 	}
 	
+	private String recvWhile(char c, Socket sc) throws IOException{
+		InputStream in = sc.getInputStream();
+		int charac = in.read();
+		StringBuffer strbf = new StringBuffer();
+		while((int)c!=charac){
+			strbf.append((char)charac);
+			charac = in.read();
+		}
+		return strbf.toString();
+	}
+	
 	@Override
-	public String recv(int protocol, int index){
+	public NetMessage recv(int protocol, int index){
 		try{
 			Socket sc = getSock(protocol, sockets.get(index));
 			Protocol p = getProt(protocol, sockets.get(index));
-			String s = waitForServer(sc);
-			if(p!=null){
-				s=p.fromSocket(s);
+			
+			try {
+				int size = Integer.parseInt(recvWhile(';', sc));
+				if(size==0){
+					NetMessage n = new NetMessage();
+					n.hasMessage = false;
+					return n;
+				}
+				
+				byte[] bytes = new byte[size];
+				sc.getInputStream().read(bytes);
+				
+				NetMessage n = new NetMessage();
+				n.fromString(new String(bytes), p);
+				return n;
+				
+			}catch(Exception e) {
+				NetMessage n = new NetMessage();
+				n.crashed = true;
+				return n;
 			}
-			return s;
 		}catch(Exception e){
-			e.printStackTrace();
-			return "";
+			NetMessage n = new NetMessage();
+			n.crashed = true;
+			return n;
 		}
 	}
 	
@@ -269,7 +318,7 @@ public class NL_BaseSubsystem extends NLSubsystem {
 		
 		if(response.equals("")){bs_sock.defaultSock.close();return -1;}
 		
-		System.out.println(response);
+		//System.out.println(response);
 		
 		// Open Tunnel
 		bs_sock.encryptedTunnel = new Socket(IP, port);
@@ -325,4 +374,14 @@ public class NL_BaseSubsystem extends NLSubsystem {
 		}
 	}
 
+	/**
+	 * 
+	 * 
+	 *Possible passage en c++:
+	 *
+	 * Utilisation de GraalVM
+	 * 
+	 * 
+	 */
+	
 }
