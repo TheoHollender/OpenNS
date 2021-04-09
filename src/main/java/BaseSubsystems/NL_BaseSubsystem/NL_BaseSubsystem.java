@@ -12,6 +12,7 @@ import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.Random;
 
 import com.google.crypto.tink.CleartextKeysetHandle;
 import com.google.crypto.tink.JsonKeysetReader;
@@ -37,16 +38,15 @@ public class NL_BaseSubsystem extends NLSubsystem {
 	public static final EncryptionProtocol PROTOCOL_ENCRYPTED_P = new EncryptionProtocol();
 	public static final Protocol PROTOCOL_FALLBACK_P = null;
 	
-	private static Queue<Integer> newSocketsWaiting = new LinkedList<Integer>();
-	public static boolean hasNewSocket(){
-		return newSocketsWaiting.size()>0;
+	private static ArrayList<BS_ServerSocket> servers = new ArrayList<BS_ServerSocket>();
+	public static boolean hasNewSocket(int index){
+		return servers.get(index).socketsWaiting.size()>0;
 	}
-	public static int getNewSocket(){
-		return newSocketsWaiting.poll();
+	public static int getNewSocket(int index){
+		return servers.get(index).socketsWaiting.poll();
 	}
 	
 	private static ArrayList<BS_Socket> sockets;
-	private static ServerSocket sSock;
 	private static Thread thSSock;
 	private static Thread thCheckFallback;
 	
@@ -77,7 +77,7 @@ public class NL_BaseSubsystem extends NLSubsystem {
 				for(int i=0; i<sockets.size(); i++){
 					BS_Socket sc = sockets.get(i);
 					try {
-						if(sc.sFall!=null && sc.sFall.available()>0){
+						if(sc!=null && sc.sFall!=null && !sc.fallbackTunnel.isClosed() && sc.sFall.available()>0){
 							String s = waitForServer(sc.fallbackTunnel);
 							String[] sPl = s.split("%%%%%%");
 							if(sPl.length>1 && sPl[0].equals("CRYPTDATA")){
@@ -116,49 +116,58 @@ public class NL_BaseSubsystem extends NLSubsystem {
 			Socket m;
 			String response;
 			while(true){
-				try{
-					
-				m = sSock.accept();
-				response = waitForServer(m);
-				if(response!=""){
-					
-					if(response.equals("BSubsystem")){
-						sockets.add(new BS_Socket());
-						int index = sockets.size() -1;
-						
-						sockets.get(index).defaultSock = m;
-						sockets.get(index).pri = pv;
-						sendPrivate(m, String.valueOf(index));
-						
-						//System.out.println("Connection Opened");
-					}else{
-						String[] s = response.split("_");
-						if(s.length>1){
-							int index = Integer.parseInt(s[1]);
-							if(sockets.get(index).encryptedTunnel==null){
-								sockets.get(index).encryptedTunnel=m;
-								//System.out.println("2/3");
-							}else if(sockets.get(index).fallbackTunnel==null){
-								sockets.get(index).fallbackTunnel=m;
-								sockets.get(index).sFall = m.getInputStream();
-
-								CleartextKeysetHandle.write(sockets.get(index).pri.getPublicKeysetHandle(), JsonKeysetWriter.withFile(KeySetSystem.keysetpub));
-								sendPrivate(m, "CRYPTDATA%%%%%%"+new NLReader(new FileReader(KeySetSystem.keysetpub)).readAll());
-								
-								newSocketsWaiting.add(index);
-								//System.out.println("Connection Finished");
-							}else{
-								m.close();
-							}
-						}
+				for(int i = 0; i < servers.size(); i++) {
+					if (servers.get(i) == null || servers.get(i).sSock == null
+							|| servers.get(i).sSock.isClosed()) {
+						continue;
 					}
 					
-				}else{
-					m.close();
-				}
+					ServerSocket sSock = servers.get(i).sSock;
+					
+					try{
+						
+						m = sSock.accept();
+						response = waitForServer(m);
+						if(response!=""){
+						
+						if(response.equals("BSubsystem")){
+							sockets.add(new BS_Socket());
+							int index = sockets.size() -1;
+							
+							sockets.get(index).defaultSock = m;
+							sockets.get(index).pri = pv;
+							sendPrivate(m, String.valueOf(index));
+							
+							//System.out.println("Connection Opened");
+						}else{
+							String[] s = response.split("_");
+							if(s.length>1){
+								int index = Integer.parseInt(s[1]);
+								if(sockets.get(index).encryptedTunnel==null){
+									sockets.get(index).encryptedTunnel=m;
+									//System.out.println("2/3");
+								}else if(sockets.get(index).fallbackTunnel==null){
+									sockets.get(index).fallbackTunnel=m;
+									sockets.get(index).sFall = m.getInputStream();
+	
+									CleartextKeysetHandle.write(sockets.get(index).pri.getPublicKeysetHandle(), JsonKeysetWriter.withFile(KeySetSystem.keysetpub));
+									sendPrivate(m, "CRYPTDATA%%%%%%"+new NLReader(new FileReader(KeySetSystem.keysetpub)).readAll());
+									
+									servers.get(i).socketsWaiting.add(index);
+								}else{
+									m.close();
+								}
+							}
+						}
+						
+					}else{
+						m.close();
+					}
+					
+					}catch(Exception e){
+						e.printStackTrace();
+					}
 				
-				}catch(Exception e){
-					e.printStackTrace();
 				}
 			}
 		}
@@ -166,7 +175,7 @@ public class NL_BaseSubsystem extends NLSubsystem {
 	}
 	
 	private int createServerP(int port) throws Exception {
-		sSock = new ServerSocket(port);
+		ServerSocket sSock = new ServerSocket(port);
 		
 		if(thSSock!=null && thSSock.isAlive()){
 			thSSock.stop();
@@ -176,9 +185,11 @@ public class NL_BaseSubsystem extends NLSubsystem {
 		thSSock = new Thread(new ThreadAccept());
 		thSSock.start();
 		
-		//System.out.println("Created server");
+		BS_ServerSocket serv = new BS_ServerSocket();
+		serv.sSock = sSock;
+		servers.add(serv);
 		
-		return 0;
+		return servers.size() - 1;
 	}
 
 	public static String recvForServer(Socket sc) throws Exception{
@@ -284,6 +295,12 @@ public class NL_BaseSubsystem extends NLSubsystem {
 				
 				NetMessage n = new NetMessage();
 				n.fromString(new String(bytes), p);
+				if (n.head.strings.containsKey("CLOSE-SOCKET")
+						&& n.head.strings.get("CLOSE-SOCKET").equals("true")) {
+					BS_Socket b_sc = sockets.get(index);
+					closeSocket(b_sc, index);
+					return null;
+				}
 				return n;
 				
 			}catch(Exception e) {
@@ -372,6 +389,36 @@ public class NL_BaseSubsystem extends NLSubsystem {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+	}
+	private void closeSocket(BS_Socket sc, int index) {
+		try {
+			sc.defaultSock.close();
+			sc.encryptedTunnel.close();
+			sc.fallbackTunnel.close();
+		} catch (IOException e) {}
+		sockets.set(index, null);
+	}
+	@Override
+	public void closeSocket(int index) {
+		BS_Socket sc = sockets.get(index);
+		NetMessage msg = new NetMessage();
+		msg.head.strings.put("CLOSE-SOCKET", "true");
+		msg.message = "NONE-CLOSE";
+		send(this.PROTOCOL_DEFAULT, index, msg);
+		closeSocket(sc, index);
+	}
+	@Override
+	public void closeServer(int index) {
+		if (servers.get(index) == null) {return;}
+		ServerSocket sSock = servers.get(index).sSock;
+		if (sSock != null && !sSock.isClosed()) {
+			try {
+				sSock.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+		servers.set(index, null);
 	}
 
 	/**

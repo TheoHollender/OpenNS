@@ -11,4 +11,7 @@ public abstract class NLSubsystem {
 	public abstract NetMessage recv(int protocol, int index);
 	public abstract int getDefauftProtocol();
 	public abstract void init();
+	
+	public abstract void closeSocket(int index);
+	public abstract void closeServer(int index);
 }

@@ -16,14 +16,14 @@ public class TestServer {
 		NL_BaseSubsystem system = new NL_BaseSubsystem();
 		OpenNL.initSubsystem(system);
 		
-		system.createServer(8008);
+		int sindex = system.createServer(8008);
 		Scanner sc = new Scanner(System.in);
 		int sock = 0;
 		while(true){
 			String msg = sc.nextLine();
 			String[] msgSpl = msg.split("_"); 
-			if(system.hasNewSocket()){
-				sock = system.getNewSocket();
+			if(system.hasNewSocket(sindex)){
+				sock = system.getNewSocket(sindex);
 				System.out.println(sock);
 			}
 			
